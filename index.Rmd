@@ -1,0 +1,2028 @@
+---
+title: "Complimentary vertebrate Wac models exhibit phenotypes relevant to DeSanto-Shinawi Syndrome"
+author: |
+  | Data analysis by:
+  | Karol Cichewicz, kcichewicz@ucdavis.edu
+  | Alexander Nord, asnord@ucdavis.edu, [Lab website](https://nordlab.faculty.ucdavis.edu/)
+
+abstract: |
+    Monogenic syndromes are associated with neurodevelopmental changes that result in cognitive impairments, neurobehavioral phenotypes including autism and attention deficit hyperactivity disorder (ADHD), and seizures. Limited studies and resources are available to make meaningful headway into the underlying molecular mechanisms that result in these symptoms. One such example is DeSanto-Shinawi Syndrome (DESSH), a rare disorder caused primarily by pathogenic variants in the WAC gene. Individuals with DESSH syndrome exhibit a recognizable craniofacial gestalt, developmental delay/intellectual disability, neurobehavioral symptoms that include autism, ADHD, behavioral difficulties and seizures. However, no thorough studies from a vertebrate model exist to understand how these changes occur. To overcome this, we developed both murine and zebrafish Wac deletion mutants and studied whether their phenotypes recapitulate those described in individuals with DESSH syndrome. We show that the two Wac models exhibit craniofacial and behavioral changes, reminiscent of abnormalities found in DESSH syndrome. In addition, each model revealed impacts to GABAergic neurons and further studies showed that the mouse mutants are susceptible to seizures. These studies begin to uncover some biological underpinnings of DESSH syndrome and elucidate the biology of Wac, with advantages in each model.
+  
+output:
+  html_document:
+    code_folding: hide
+    css: style.css
+    theme: spacelab
+    toc: true
+    toc_depth: 4
+    toc_float: true
+urlcolor: blue
+editor_options: 
+  chunk_output_type: console
+---
+
+
+```{r}
+# Working directory
+
+github_dir <- file.path("G:/Shared drives/Nord Lab - Computational Projects2/WAC_bulk_May_2023")
+setwd(github_dir)
+
+
+# Global R markdown code chunk options
+knitr::opts_chunk$set(message=FALSE, 
+                      warning = FALSE, 
+                      error=FALSE, 
+                      echo=TRUE, 
+                      fig.width = 7, fig.height = 6, 
+                      fig.align = 'left')
+
+```
+
+
+
+```{r}
+
+# Read metadata and count table
+metadata <- read.csv("metadata.csv")
+metadata$ID <- paste0("WAC", metadata$ID)
+
+counts <- read.table("WAC_P2_featureCounts.txt", header = 1)
+
+
+# Simplify colnames
+cols <- colnames(counts)[7:30]
+cols <- gsub("X.mnt.disks.data4.WAC_P2_bulk_May_2023.bam_only.", "", cols)
+cols <- gsub("_Aligned.sortedByCoord.out.bam", "", cols)
+colnames(counts) <- c(colnames(counts)[1:6], cols)
+
+```
+
+# 1. Data QC
+
+## 1.1 Sequencign depth
+
+```{r, fig.width=10, fig.height=5}
+
+seq_depth <- as.data.frame(colSums(counts[,7:30])/ 1000000)
+seq_depth$ID <- rownames(seq_depth)
+
+row.names(seq_depth) <- NULL 
+seq_depth <- seq_depth[,2:1]
+colnames(seq_depth) <- c("ID", "n_of_aligned_reads")
+
+
+metadata$Genotype <- factor(metadata$Genotype, levels = c("WT", "HET"))
+
+seq_depth <- merge(seq_depth, metadata)
+
+library(ggplot2)
+
+
+aligned_counts_p <- ggplot(seq_depth, aes(x = ID, y = n_of_aligned_reads, color = Sex))+
+  #geom_bar(position = "dodge",  stat="identity", color="black")+
+  geom_point(size = 3)+
+  theme_bw()+
+  labs(x = "", y = "Aligned read counts [millions]", title = "Sample sequencing depth")+
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))+
+  theme(plot.title = element_text(hjust = 0.5))+
+  facet_wrap(~Genotype, scales = "free_x")
+
+
+aligned_counts_p 
+
+```
+
+```{r}
+
+library(tidyverse)
+library(knitr)
+
+condition_split <- metadata %>%
+    group_by(Genotype, Sex) %>%
+    summarise(n=n())
+
+knitr::kable(as.data.frame(condition_split))
+
+```
+
+## 1.2 Multidimensional scaling (MDS) analysis 
+
+```{r}
+
+data <- counts
+
+library(edgeR)
+
+min.cpm.criteria = 1  
+
+test.data <- data[, 7:30]
+rownames(test.data) <- data$Geneid
+
+
+test.samples <- 1:nrow(metadata)
+min.cpm <- min.cpm.criteria
+
+y <- DGEList(counts=test.data, group=metadata$Genotype)
+keep <- rowSums(cpm(y)>min.cpm) >=2 #keeps only genes expressed in above min.cpm in at least 2 libraries in each group 
+y <- y[keep, , keep.lib.sizes=FALSE]
+y <- calcNormFactors(y) # Normalizes for RNA composition
+y <- estimateCommonDisp(y) # Estimates common dispersions. Calculates pseudo-counts, a type of normalized counts. Don't misteke them with 0+x type counts from other packages. Also "users are advised not to interpret the psuedo-counts as general-purpose normalized counts".
+y <- estimateTagwiseDisp(y) #Estimates dispersions. Applicable only to experiments with single factor.
+#Alternatively the two commands from above can be replaced with y <- estimateDisp(y)
+
+
+#MDS plot using ggplot.
+MDS_data1 <- plotMDS(y, plot = FALSE, dim.plot = c(1, 2))
+MDS_data2 <- plotMDS(y, plot = FALSE, dim.plot = c(3, 4))
+MDS_data3 <- plotMDS(y, plot = FALSE, dim.plot = c(5, 6))
+MDS_data4 <- plotMDS(y, plot = FALSE, dim.plot = c(7, 8))
+MDS_data5 <- plotMDS(y, plot = FALSE, dim.plot = c(9, 10))
+
+MDS_data2 <- data.frame(Leading_logFC_dim_1 = MDS_data1$x, 
+                        Leading_logFC_dim_2 = MDS_data1$y,
+                        Leading_logFC_dim_3 = MDS_data2$x, 
+                        Leading_logFC_dim_4 = MDS_data2$y,
+                        Leading_logFC_dim_5 = MDS_data3$x, 
+                        Leading_logFC_dim_6 = MDS_data3$y,
+                        Leading_logFC_dim_7 = MDS_data4$x, 
+                        Leading_logFC_dim_8 = MDS_data4$y,
+                        Leading_logFC_dim_9 = MDS_data5$x, 
+                        Leading_logFC_dim_10 = MDS_data5$y)
+
+MDS_data2 <- data.frame(Samples=rownames(MDS_data1$distance.matrix.squared), MDS_data2, metadata)
+
+#Sanity check
+#all(MDS_data2$Samples == MDS_data2$counts_colnames) # TRUE
+
+rownames(MDS_data2) <- NULL
+MDS_data2$Genotype <- as.factor(MDS_data2$Genotype)
+
+```
+
+
+```{r}
+# MDS plots
+
+point_size = 3
+
+MDS_plot_12 <- function(variable){
+  ggplot(MDS_data2, aes(x=Leading_logFC_dim_1, 
+                        y=Leading_logFC_dim_2, 
+                        colour=get(variable), 
+                        shape=Genotype,
+                        label = Samples))+
+  geom_point(size=point_size, alpha=0.6)+
+  theme_bw()+
+  labs(title = "MDS plot", color = variable)+
+  theme(plot.title = element_text(size = rel(1.2), hjust=0.5))+
+  theme(axis.text.x = element_text(size=12), text = element_text(size=12))+
+  theme(legend.position = "bottom")
+
+}
+
+
+MDS_plot_34 <- function(variable){
+  ggplot(MDS_data2, aes(x=Leading_logFC_dim_3, 
+                        y=Leading_logFC_dim_4, 
+                        colour=get(variable), 
+                        shape=Genotype,
+                        label = Samples))+
+  geom_point(size=point_size, alpha=0.6)+
+  theme_bw()+
+  labs(title = "MDS plot", color = variable)+
+  theme(plot.title = element_text(size = rel(1.2), hjust=0.5))+
+  theme(axis.text.x = element_text(size=12), text = element_text(size=12))+
+  theme(legend.position = "bottom")
+
+}
+
+```
+
+
+```{r, fig.width=10, fig.height=5}
+
+library(cowplot)
+
+plot_grid(MDS_plot_12("Sex"),
+          MDS_plot_12("Genotype"))
+         
+plot_grid(MDS_plot_34("Sex"),
+          MDS_plot_34("Genotype"))
+
+```
+
+## 1.3 Sex assignment via Xist expression
+
+```{r}
+
+library(parallel)
+
+# Calculates exonic gene sizes and reads GTF file
+# library(GenomicFeatures)
+
+# installed manually from https://cran.r-project.org/src/contrib/Archive/refGenome/  :/
+# library(refGenome)
+
+
+# The output is loaded from a file to speed up report generation
+if(file.exists("my_gene_annotation.RDS")){
+  
+  my_gene <- readRDS("my_gene_annotation.RDS")
+  
+} else {
+
+# create ensemblGenome object for storing Ensembl genomic annotation data
+ens <- ensemblGenome()
+
+# read GTF file into ensemblGenome object. Must be in wd() - strange
+read.gtf(ens, "Mus_musculus.GRCm38.95.gtf")
+
+my_gene <- getGenePositions(ens) # dataframe with corresponding gene_id, gene_name, and other annotations
+
+}
+
+# Merge annotations with with count data:
+counts2 <- merge(my_gene[,c("gene_id", "gene_name")], data, 
+                 by.x = "gene_id", by.y = "Geneid", all = T)
+
+```
+
+
+Sex annotation in the metadata matches Xist expression. 
+```{r, fig.width=4, fig.height=5}
+
+# Qualifies F or M based on the Xist expression
+library(dplyr)
+library(RColorBrewer)
+
+Xist <- filter(counts2, gene_name == "Xist")[,metadata$ID]
+
+sex.by.rna <- c(ifelse(Xist >1000, "F","M")) #
+
+Xist_exp <- as.data.frame(reshape2::melt(Xist))
+Xist_exp <- cbind(Xist_exp, sex.by.rna)
+Xist_exp <- arrange(Xist_exp, value)
+colnames(Xist_exp) <- c("ID", "Xist_counts", "sex.by.rna")
+
+
+df <- merge(metadata, Xist_exp)
+df$Sex <- factor(df$Sex, levels = c("M", "F"))
+df$sex.by.rna <- factor(df$sex.by.rna, levels = c("M", "F"))
+
+ j_brew_colors <- brewer.pal(n = 8, name = "Paired")[c(2,6)]
+
+ggplot(df, aes(x=sex.by.rna, y=Xist_counts, colour=Genotype, group = Sex))+
+  geom_jitter(width = 0.2)+
+  geom_boxplot(alpha=0.2, outlier.alpha = 0)+
+  theme_bw()+
+  scale_color_manual(values = j_brew_colors)+
+  labs(title="Sample sex validation", x = "", y = "Xist read counts")+
+  theme(plot.title = element_text(size = rel(1.5), hjust=0.5))+
+  scale_x_discrete(breaks= c("F", "M"), labels=c("Females", "Males"))
+
+
+# all(df$Sex == df$sex.by.rna) # TRUE
+
+```
+
+
+
+## 1.4 Wac expression
+
+Animals carrying Wac heterozygout deletions have increased expression of Wac gene. We ruled out the possibility of sample mislabeling by looking at the Wac gene read coverage profiles, which indicate that Wac heterozygotes have reduced coverage of the floxed exone.
+
+```{r}
+
+exp.data <- counts2[,c("gene_id", df$ID)]
+rownames(exp.data) <- exp.data$gene_id 
+exp.data$gene_id <- NULL
+
+# Calculates RPKM values
+# Gene lengths calculated with lapply
+
+#### 1.st retrieve exonic.gene.sizes ####
+
+#txdb <- makeTxDbFromGFF("./Mus_musculus.GRCm38.95.gtf", format="gtf")
+#exons.list.per.gene <- exonsBy(txdb, by="gene")
+
+# Parallelized, increasing the speed >2x on a 4-core (logical) machine. 
+# Use mclapply instead of parLapply if you use Mac.
+# cl <- makeCluster(detectCores())
+# exonic.gene.sizes <- parallel::parLapply(cl, exons.list.per.gene,function(x){sum(width(reduce(x)))})
+# stopCluster(cl)
+
+#### 2nd. Calculate gene lengths ####
+# gene.lengths <- as.numeric(lapply(1:nrow(exp.data), function(x) FUN= #as.numeric(exonic.gene.sizes[rownames(exp.data)[x]])))
+# names(gene.lengths) <- rownames(exp.data)
+
+# saveRDS(gene.lengths, file= "gene_lengths.RDS")
+
+gene.lengths = readRDS("gene_lengths.RDS")
+
+# 1. Confirm if gene names match between objects
+#all(names(gene.lengths) == data$Geneid) # FALSE !!!They don't match between the original data and gene lengths!!!
+#all(names(gene.lengths) == rownames(exp.data)) # TRUE
+ # This is not a problem, just something to keep in mind. They don't match because of merging with the annotation at some point.
+
+# The original data object, has Length column from featureCounts.
+# 2. Sanity check: Confirm that gene lengths match between count data and gene.lengths
+#all(data$Length == gene.lengths[data$Geneid])  # TRUE
+
+# Sanity check: Check again that exp.data matched gene lengths
+#all(rownames(exp.data) == names(gene.lengths)) # TRUE
+
+# Now proceed to calculating RPKMs
+rpkm.data <- rpkm(exp.data, gene.length=gene.lengths, log=TRUE)  # Using the default prior count of 2
+rpkm.data_linear <- rpkm(exp.data, gene.length=gene.lengths, log=F)
+
+#all(counts2$gene_id == rownames(rpkm.data_linear))    # TRUE
+#all(rownames(exp.data) == rownames(rpkm.data_linear)) # TRUE
+
+
+#write.csv(rpkm.data, file = "rpkm_log2_54838.csv")
+#write.csv(rpkm.data_linear, file = "rpkm_linear_54838.csv")
+
+```
+
+
+```{r, fig.width=3, fig.height=5}
+
+library(RColorBrewer)
+
+df$sex.by.rna <- factor(df$sex.by.rna, levels = c("M", "F"))
+df$Genotype <- factor(df$Genotype, levels = c("WT", "HET"))
+
+#colnames(rpkm.data_linear) == df$ID
+
+rpkm_box_plot <- function(x, y){
+    
+rownames(rpkm.data_linear) <- counts2$gene_name
+    
+rpkm_test <- as.data.frame(reshape2::melt(rpkm.data_linear[x,]))
+rpkm_test <- data.frame(df, "RPKM" = rpkm_test$value)
+
+j_brew_colors <- brewer.pal(n = 8, name = "Paired")[c(2,6)]
+
+
+
+ggplot(rpkm_test, aes(x = Genotype, y= RPKM, colour=Genotype))+
+  geom_jitter(size=2, width = 0.2, alpha = 0.5, aes(shape = sex.by.rna))+
+  geom_boxplot(alpha=0, position="identity", size = 0.2)+
+  
+  theme_bw()+
+  theme(axis.text.x=element_text(angle=0, vjust=0.9, hjust=0.5, size=14))+
+  theme(axis.text.y=element_text(size=12))+
+  theme(axis.title.y=element_text(size=14))+
+  labs(title= y, x="")+
+  theme(plot.title = element_text(size = rel(2), hjust=0.5))+
+  scale_color_manual(values = j_brew_colors)+
+  theme(legend.position = "bottom")
+   # facet_wrap(~Cells)
+
+}
+
+rpkm_box_plot("Wac", "Wac")
+
+
+```
+
+## 1.5 Wac sashimi plots
+
+### 1.5.1 WT
+
+![WT sashimi plot - full gene](./Sashimi_plots/WT_samples_3_full_gene.png)
+
+![WT sashimi plot - 4 exones](./Sashimi_plots/WT_samples_2.png)
+
+### 1.5.2 Het
+
+![Het sashimi plot - full gene](./Sashimi_plots/Het_samples_3_full_gene.png)
+
+![Het sashimi plot - 4 exones](./Sashimi_plots/Het_samples_2.png)
+
+
+## 1.6 Principal component analysis (PCA)
+
+```{r, fig.width=12, fig.height=10}
+
+metadata <- df
+
+all(metadata$ID == colnames(exp.data)) # TRUE
+metadata$Sequencing_depth <- colSums(exp.data)
+
+# Add RNA quality metadata
+metadata_RNA <- read.csv("metadata_RNA_quality.csv")
+colnames(metadata_RNA)[5] <- "Ratio_230_260"
+
+
+#
+metadata_test <- merge(metadata, metadata_RNA, 
+                       by.x = c("ID", "Sex", "Genotype"), 
+                       by.y = c("Sample", "Sex", "Genotype"))
+
+all(metadata_test$ID == colnames(exp.data)) # TRUE
+
+metadata <- metadata_test
+
+# Save metadata for GEO submission
+m_test <- metadata
+m_test$Sample_number <- as.numeric(gsub("WAC","", metadata$ID))
+m_test <- arrange(m_test, Sample_number)
+
+m_test <- m_test[,c("ID", "Genotype", "Sex", "Concentration", "RIN", "Ratio_230_260", "Sequencing_depth")]
+colnames(m_test) <- c("ID", "Genotype", "Sex", "RNA_concentration_ng_per_ul", "RIN_score", "RNA_230_260_ratio", "Aligned_reads")
+
+m_test$Title <- paste0(m_test$ID, "_", m_test$Genotype, "_", m_test$Sex)
+
+write.csv(m_test, file = "Metadata_GEO.csv", row.names = F)
+
+# Save count tables
+write.csv(counts[,c("Geneid", "Chr", "Start", "End", "Strand", "Length",
+                    m_test$ID)], "WAC_gene_counts.csv", row.names = F)
+
+
+
+#### Remove genes expressed at low levels
+min.cpm <- 1
+
+y <- DGEList(counts=exp.data, group=as.factor(metadata$Genotype))  #
+
+keep <- rowSums(cpm(y)>min.cpm) >= 6 
+y <- y[keep, , keep.lib.sizes=FALSE]
+
+pca.results <- prcomp(log(y$counts + 1), 
+                            center=T, scale=T) # It is a good idea to scale your variables. Otherwise the magnitude to certain variables dominates the associations between the variables in the sample.
+
+b <- data.frame(metadata,
+                pca.results$rotation)
+rownames(b) <- NULL
+
+
+#PCA plot
+PCA_plot_12 <- function(PCx, PCy, variable){ 
+  ggplot(b, aes(x=get(PCx), y=get(PCy), color = get(variable), label = ID))+
+  geom_point(size=3, alpha=0.6)+
+  theme_bw()+
+  labs(title = variable, x = PCx, y = PCy)+
+  theme(plot.title = element_text(size = rel(1.5), hjust=0.5))+
+  theme(legend.position = "bottom", legend.title = element_blank())
+}
+
+
+plot_grid(
+  
+plot_grid(
+    PCA_plot_12("PC1", "PC2", "Genotype"),
+    PCA_plot_12("PC1", "PC2", "Sex"),
+    PCA_plot_12("PC1", "PC2", "Sequencing_depth")+scale_color_gradient(low="blue", high="red"),
+    PCA_plot_12("PC1", "PC2", "Xist_counts")+scale_color_gradient(low="blue", high="red"), nrow = 1
+    ),
+
+plot_grid(
+    PCA_plot_12("PC3", "PC4", "Genotype"),
+    PCA_plot_12("PC3", "PC4", "Sex"),
+    PCA_plot_12("PC3", "PC4", "Sequencing_depth")+scale_color_gradient(low="blue", high="red"),
+    PCA_plot_12("PC3", "PC4", "Xist_counts")+scale_color_gradient(low="blue", high="red"), nrow = 1
+    ),
+
+plot_grid(
+    PCA_plot_12("PC5", "PC6", "Genotype"),
+    PCA_plot_12("PC5", "PC6", "Sex"),
+    PCA_plot_12("PC5", "PC6", "Sequencing_depth")+scale_color_gradient(low="blue", high="red"),
+    PCA_plot_12("PC5", "PC6", "Xist_counts")+scale_color_gradient(low="blue", high="red"), nrow = 1
+    ),
+plot_grid(
+    PCA_plot_12("PC7", "PC8", "Genotype"),
+    PCA_plot_12("PC7", "PC8", "Sex"),
+    PCA_plot_12("PC7", "PC8", "Sequencing_depth")+scale_color_gradient(low="blue", high="red"),
+    PCA_plot_12("PC7", "PC8", "Xist_counts")+scale_color_gradient(low="blue", high="red"), nrow = 1
+    ), nrow = 4
+)
+
+
+# 3 samples the furthest to the right along PC1: WAC24, WAC17, WAC21
+
+```
+
+Scree plot
+```{r, fig.width = 5, fig.height = 4}
+
+#calculate total variance explained by each principal component
+var_explained = pca.results$sdev^2 / sum(pca.results$sdev^2)
+
+
+
+var_explained <- data.frame("PC" =  1:length(var_explained),
+                            "var_explained" = var_explained)
+
+#create scree plot
+library(ggplot2)
+
+ggplot(var_explained[1:5,], aes(x = PC, y = var_explained)) + 
+  geom_bar(stat = "identity")+
+  #geom_line() + 
+  theme_bw()+
+  xlab("Principal Component") + 
+  ylab("Variance Explained") +
+  labs(title = "Scree Plot",
+       subtitle = paste0("PC1 explains ", round(var_explained$var_explained[1]*100, digits = 1), " % of the variance"))+
+  ylim(0, 1)
+
+```
+
+
+PCA vs known variables correlations 
+```{r, fig.width = 12, fig.height = 5}
+
+library(pheatmap)
+
+### 
+df_cor <- data.frame(
+  "Genotype" = abs(cor(pca.results$rotation[,1:10], as.numeric(as.factor(metadata$Genotype)))),
+  "Sex" = abs(cor(pca.results$rotation[,1:10], as.numeric(as.factor(metadata$Sex)))),
+  "Sequencing_depth" = abs(cor(pca.results$rotation[,1:10], as.numeric(as.factor(metadata$Sequencing_depth))))
+  )
+
+
+# P values
+
+df_cor_P <- data.frame(
+  "Genotype" = sapply(1:10, function(x){cor.test(pca.results$rotation[,x], 
+                       as.numeric(as.factor(metadata$Genotype)))$p.value}),
+  
+  "Sex" = sapply(1:10, function(x){cor.test(pca.results$rotation[,x], 
+                       as.numeric(as.factor(metadata$Sex)))$p.value}),
+  
+  "Sequencing_depth" = sapply(1:10, function(x){cor.test(pca.results$rotation[,x], 
+                       as.numeric(as.factor(metadata$Sequencing_depth)))$p.value})
+    )
+
+
+
+pheatmap(t(df_cor),
+         display_numbers = round(t(df_cor_P), digits = 3), 
+         cluster_rows = F,
+         cluster_cols = F,
+         fontsize = 14,
+         col = c('white', 'forestgreen', 'darkgreen'),
+         main = "Correlation of PCs and sample variables")
+
+```
+
+
+# 2. Differential expression analysis
+
+```{r}
+
+library(edgeR)
+library(tidyverse)
+
+pairwise_DE <- function(x, y, cpm){
+
+# x <- "WT"
+# y <- "HET"
+# Sex <- c("M", "F")
+          
+control.datapoints <- dplyr::filter(df, 
+                                    Genotype == x)$ID
+
+test.datapoints <- dplyr::filter(df, 
+                                 Genotype == y)$ID
+
+# Define samples to use in DE
+use.cols <- c(control.datapoints, test.datapoints)
+
+# Filter metadata
+df_test <- filter(df, ID %in% use.cols)
+
+# Subset exp.data, using the Sample column from metadata
+test.data <- exp.data[,df_test$ID]
+
+# Make sure the subseted metadata and test.data match in columns 
+data_metadata_order_sanity_check <- all(colnames(test.data) == df_test$ID) # TRUE
+
+# Define test.group using subsetted metadata
+test.group <- df_test$Genotype
+test.group <- factor(as.character(test.group), levels = c(x, y))
+
+
+y <- DGEList(counts=test.data, group=as.factor(test.group))  #
+
+min.cpm.criteria <- cpm
+min.cpm <- min.cpm.criteria
+
+
+design <- model.matrix(~ as.factor(df_test$sex.by.rna) + as.factor(test.group))
+#design <- model.matrix(~as.factor(test.group))
+
+y <- DGEList(counts=test.data, group=test.group)
+keep <- rowSums(cpm(y)>min.cpm) >=6 #keeps only genes expressed in above min.cpm in at least 2 libraries in each group 
+y <- y[keep, , keep.lib.sizes=FALSE]
+
+y <- estimateGLMCommonDisp(y,design)
+y <- estimateGLMTrendedDisp(y,design)
+y <- estimateGLMTagwiseDisp(y,design)
+fit <- glmFit(y,design) 
+lrt <- glmLRT(fit) # Genewise Negative Binomial Generalized Linear Models.
+
+glm.output <- topTags(lrt, n=Inf)
+glm.output.full <- glm.output$table
+
+glm.output.full$gene_name <- rownames(glm.output.full)
+rownames(glm.output.full) <- NULL
+glm.output.full <- glm.output.full[,c(6,1:5)]
+
+colnames(glm.output.full) <- c("gene_id", "logFC", "logCPM", "LR", "PValue", "FDR")
+
+glm.output.full <- merge(my_gene[,c("gene_id", "gene_name")], 
+      glm.output.full, by.x = "gene_id", by.y = "gene_id", all.y = T)
+
+list(arrange(glm.output.full, FDR), data_metadata_order_sanity_check)
+
+}
+
+
+wt_het_DE_cpm1 <- pairwise_DE("WT", "HET", 1)
+
+#head(wt_het_DE_cpm1[[1]], 30)
+
+```
+
+
+
+```{r, message=FALSE}
+
+library(edgeR)
+library(tidyverse)
+
+pairwise_DE_sva <- function(x, y, cpm){
+
+# x <- "WT"
+# y <- "HET"
+# Sex <- c("M", "F")
+          
+control.datapoints <- dplyr::filter(df, 
+                                    Genotype == x)$ID
+
+test.datapoints <- dplyr::filter(df, 
+                                 Genotype == y)$ID
+
+# Define samples to use in DE
+use.cols <- c(control.datapoints, test.datapoints)
+
+# Filter metadata
+df_test <- filter(df, ID %in% use.cols)
+
+# Subset exp.data, using the Sample column from metadata
+test.data <- exp.data[,df_test$ID]
+
+# Make sure the subseted metadata and test.data match in columns 
+data_metadata_order_sanity_check <- all(colnames(test.data) == df_test$ID) # TRUE
+
+# Define test.group using subsetted metadata
+test.group <- df_test$Genotype
+test.group <- factor(as.character(test.group), levels = c(x, y))
+
+
+y <- DGEList(counts=test.data, group=as.factor(test.group))  #
+
+min.cpm.criteria <- cpm
+min.cpm <- min.cpm.criteria
+
+
+#design <- model.matrix(~ as.factor(df_test$sex.by.rna) + as.factor(test.group))
+#design <- model.matrix(~as.factor(test.group))
+
+
+y <- DGEList(counts=test.data, group=test.group)
+keep <- rowSums(cpm(y)>min.cpm) >=6 #keeps only genes expressed in above min.cpm in at least 2 libraries in each group 
+y <- y[keep, , keep.lib.sizes=FALSE]
+
+library(sva)
+mod1=model.matrix(~as.factor(test.group)) 
+mod0=cbind(mod1[,1]) 
+svseq=svaseq(cpm(y),mod1,mod0, n.sv=1)$sv 
+
+#plot(svseq,pch=19, col=df_test$Batch)
+#plot(svseq,pch=19, col=df_test$Sex)
+design <- model.matrix(~as.numeric(svseq[,1]) + as.factor(test.group))
+
+y <- estimateGLMCommonDisp(y,design)
+y <- estimateGLMTrendedDisp(y,design)
+y <- estimateGLMTagwiseDisp(y,design)
+fit <- glmFit(y,design) 
+lrt <- glmLRT(fit) # Genewise Negative Binomial Generalized Linear Models.
+
+glm.output <- topTags(lrt, n=Inf)
+glm.output.full <- glm.output$table
+
+glm.output.full$gene_name <- rownames(glm.output.full)
+rownames(glm.output.full) <- NULL
+glm.output.full <- glm.output.full[,c(6,1:5)]
+
+colnames(glm.output.full) <- c("gene_id", "logFC", "logCPM", "LR", "PValue", "FDR")
+
+glm.output.full <- merge(my_gene[,c("gene_id", "gene_name")], 
+      glm.output.full, by.x = "gene_id", by.y = "gene_id", all.y = T)
+
+list(arrange(glm.output.full, FDR), data_metadata_order_sanity_check)
+
+}
+
+
+wt_het_DE_cpm1_sva <- pairwise_DE_sva("WT", "HET", 1)
+
+#head(wt_het_DE_cpm1_sva[[1]], 30)
+
+```
+
+
+
+
+```{r}
+
+write.csv(wt_het_DE_cpm1_sva[[1]], file = "G:/Shared drives/Nord Lab - Computational Projects2/WAC_bulk_May_2023/WT_vs_Het_Wac_sva_cor_DE.csv", row.names = F)
+
+```
+
+```{r}
+
+fdr_01_genes <- filter(wt_het_DE_cpm1[[1]], FDR < 0.1)$gene_name # 18 genes
+sva_fdr_01_genes <- filter(wt_het_DE_cpm1_sva[[1]], FDR < 0.1)$gene_name # 23
+
+
+#########################
+
+#pl <- lapply(fdr_01_genes, function(x) {rpkm_box_plot(x, x)+
+#        theme(legend.position = "none")})
+#plot_grid(plotlist = pl, nrow = 3, ncol = 6)
+
+
+
+# 
+#pl <- lapply(sva_fdr_01_genes, function(x) {rpkm_box_plot(x, x)+
+#        theme(legend.position = "none")})
+#plot_grid(plotlist = pl, nrow = 4, ncol = 6)
+
+
+```
+
+
+
+```{r}
+
+############################################################################################################
+
+
+pairwise_DE_male <- function(x, y, cpm){
+
+# x <- "WT"
+# y <- "HET"
+# Sex <- "M"
+          
+control.datapoints <- dplyr::filter(df, 
+                                    Genotype == x,
+                                    sex.by.rna == "M")$ID
+
+test.datapoints <- dplyr::filter(df, 
+                                 Genotype == y & 
+                                 sex.by.rna == "M")$ID
+
+# Define samples to use in DE
+use.cols <- c(control.datapoints, test.datapoints)
+
+# Filter metadata
+df_test <- filter(df, ID %in% use.cols)
+
+# Subset exp.data, using the Sample column from metadata
+test.data <- exp.data[,df_test$ID]
+
+# Make sure the subseted metadata and test.data match in columns 
+data_metadata_order_sanity_check <- all(colnames(test.data) == df_test$ID) # TRUE
+
+# Define test.group using subsetted metadata
+test.group <- df_test$Genotype
+test.group <- factor(as.character(test.group), levels = c(x, y))
+
+
+y <- DGEList(counts=test.data, group=as.factor(test.group))  #
+
+min.cpm.criteria <- cpm
+min.cpm <- min.cpm.criteria
+
+
+design <- model.matrix(~ as.factor(test.group))
+
+y <- DGEList(counts=test.data, group=test.group)
+keep <- rowSums(cpm(y)>min.cpm) >=3 #keeps only genes expressed in above min.cpm in at least 2 libraries in each group 
+y <- y[keep, , keep.lib.sizes=FALSE]
+y <- estimateGLMCommonDisp(y,design)
+y <- estimateGLMTrendedDisp(y,design)
+y <- estimateGLMTagwiseDisp(y,design)
+fit <- glmFit(y,design) 
+lrt <- glmLRT(fit) # Genewise Negative Binomial Generalized Linear Models.
+
+glm.output <- topTags(lrt, n=Inf)
+glm.output.full <- glm.output$table
+
+glm.output.full$gene_name <- rownames(glm.output.full)
+rownames(glm.output.full) <- NULL
+glm.output.full <- glm.output.full[,c(6,1:5)]
+
+colnames(glm.output.full) <- c("gene_id", "logFC", "logCPM", "LR", "PValue", "FDR")
+
+glm.output.full <- merge(my_gene[,c("gene_id", "gene_name")], 
+      glm.output.full, by.x = "gene_id", by.y = "gene_id", all.y = T)
+
+list(arrange(glm.output.full, FDR), data_metadata_order_sanity_check)
+
+}
+
+##################################################
+
+
+pairwise_DE_female <- function(x, y, cpm){
+
+# x <- "WT"
+# y <- "HET"
+# Sex <- "M"
+          
+control.datapoints <- dplyr::filter(df, 
+                                    Genotype == x,
+                                    sex.by.rna == "F")$ID
+
+test.datapoints <- dplyr::filter(df, 
+                                 Genotype == y & 
+                                 sex.by.rna == "F")$ID
+
+# Define samples to use in DE
+use.cols <- c(control.datapoints, test.datapoints)
+
+# Filter metadata
+df_test <- filter(df, ID %in% use.cols)
+
+# Subset exp.data, using the Sample column from metadata
+test.data <- exp.data[,df_test$ID]
+
+# Make sure the subseted metadata and test.data match in columns 
+data_metadata_order_sanity_check <- all(colnames(test.data) == df_test$ID) # TRUE
+
+# Define test.group using subsetted metadata
+test.group <- df_test$Genotype
+test.group <- factor(as.character(test.group), levels = c(x, y))
+
+
+y <- DGEList(counts=test.data, group=as.factor(test.group))  #
+
+min.cpm.criteria <- cpm
+min.cpm <- min.cpm.criteria
+
+
+design <- model.matrix(~ as.factor(test.group))
+
+y <- DGEList(counts=test.data, group=test.group)
+keep <- rowSums(cpm(y)>min.cpm) >=3 #keeps only genes expressed in above min.cpm in at least 2 libraries in each group 
+y <- y[keep, , keep.lib.sizes=FALSE]
+y <- estimateGLMCommonDisp(y,design)
+y <- estimateGLMTrendedDisp(y,design)
+y <- estimateGLMTagwiseDisp(y,design)
+fit <- glmFit(y,design) 
+lrt <- glmLRT(fit) # Genewise Negative Binomial Generalized Linear Models.
+
+glm.output <- topTags(lrt, n=Inf)
+glm.output.full <- glm.output$table
+
+glm.output.full$gene_name <- rownames(glm.output.full)
+rownames(glm.output.full) <- NULL
+glm.output.full <- glm.output.full[,c(6,1:5)]
+
+colnames(glm.output.full) <- c("gene_id", "logFC", "logCPM", "LR", "PValue", "FDR")
+
+glm.output.full <- merge(my_gene[,c("gene_id", "gene_name")], 
+      glm.output.full, by.x = "gene_id", by.y = "gene_id", all.y = T)
+
+list(arrange(glm.output.full, FDR), data_metadata_order_sanity_check)
+
+}
+
+```
+
+```{r}
+
+# I'm using simple GLM model without covariates
+
+DE_male <- pairwise_DE_male("WT", "HET", 1)[[1]]
+
+DE_female <- pairwise_DE_female("WT", "HET", 1)[[1]]
+
+```
+
+
+## 2.1. DE gene counts
+```{r}
+
+
+DE_gene_counts <- function(de_table){
+
+    fdr_threshold = 0.1
+    p_threshold = 0.05
+
+        P_up <- length(dplyr::filter(de_table, PValue < p_threshold, logFC > 0)$gene_name)
+        P_down <- length(dplyr::filter(de_table, PValue < p_threshold, logFC < 0)$gene_name)
+
+        FDR_up <- length(dplyr::filter(de_table, FDR < fdr_threshold, logFC > 0)$gene_name)
+        FDR_down <- length(dplyr::filter(de_table, FDR < fdr_threshold, logFC < 0)$gene_name)
+
+
+    DE_df_n <- t(data.frame(
+           "Gene_counts" =c(P_up, P_down, FDR_up, FDR_down)
+        ))
+
+        colnames(DE_df_n) <- c("Upregulated_at_Pvalue", "Downregulated_at_Pvalue", 
+                       "Upregulated_at_FDR", "Downregulated_at_FDR")
+
+
+        DE_df_n_melted <- reshape2::melt(DE_df_n)
+
+        DE_df_n_melted$stat <- c(rep(", P < 0.05", 2), rep(", FDR < 0.1", 2))
+
+        DE_df_n_melted$dir <- c("Up", "Down", "Up", "Down")
+
+        DE_df_n_melted
+    }
+
+
+
+#### 
+
+
+d1 <- DE_gene_counts(wt_het_DE_cpm1[[1]])
+d1$Comparison <- "WT_vs_Het_sex_cor"
+
+d2 <- DE_gene_counts(wt_het_DE_cpm1_sva[[1]])
+d2$Comparison <- "WT_vs_Het_sva_cor"
+
+d3 <- DE_gene_counts(DE_male)
+d3$Comparison <- "WT_vs_Het_males"
+
+d4 <- DE_gene_counts(DE_female)
+d4$Comparison <- "WT_vs_Het_females"
+
+
+DE_counts <- rbind(d1, d2, d3, d4)
+
+DE_counts$Comparison <- factor(DE_counts$Comparison, 
+                               levels = c("WT_vs_Het_sex_cor",
+                                          "WT_vs_Het_sva_cor",
+                                          "WT_vs_Het_males",
+                                          "WT_vs_Het_females")) 
+
+
+# Save Supplementary tables
+write.csv(m_test, file = "Supplementary_tables/Supplementary table X, Metadata.csv", row.names = F)
+write.csv(wt_het_DE_cpm1_sva[[1]], file = "Supplementary_tables/Supplementary table X, DE_table_sva_corrected.csv", row.names = F)
+write.csv(DE_male, file = "Supplementary_tables/Supplementary table X, DE_table_male.csv", row.names = F)
+write.csv(DE_female, file = "Supplementary_tables/Supplementary table X, DE_table_female.csv", row.names = F)
+
+
+
+```
+
+
+```{r}
+
+
+ggplot(filter(DE_counts, Comparison %in% c("WT_vs_Het_sva_cor",
+                                           "WT_vs_Het_males",
+                                           "WT_vs_Het_females")), aes(fill=Var2, group=dir, x=Var1, y=value))+
+  geom_bar(position = "dodge",  stat="identity", color="black")+
+  theme_bw()+
+  #scale_fill_manual(values=brewer.pal(n = 8, name = "Paired")[c(6,2,6, 2 )])+
+  scale_fill_manual(values = c("#eb5e60", "#62a0ca", "#960304", "#1F78B4"))+ 
+  theme(legend.title=element_blank())+
+  labs(title="Numbers of DE genes at P < 0.05 and FDR < 0.1", x="", y="")+
+  theme(plot.title = element_text(size = rel(1.2), hjust=0.5))+
+  geom_text(aes(label=value), position=position_dodge(width=0.9), hjust= 0.5, vjust = -0.5, angle = 0)+
+  #coord_flip()+
+  #scale_x_discrete(limits = rev(levels(DE_df_n_melted$Var1)))+
+  theme(panel.border = element_blank(),
+        #legend.key = element_blank(),
+        axis.ticks = element_blank(),
+        axis.text.x = element_blank(),
+        axis.text.y = element_text(angle = 0, size = 0, face = "bold", 
+                                   hjust = 0.5, vjust = -4),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank())+
+  theme(legend.position="none")+
+  facet_wrap(~Comparison, scale = "free_x", nrow = 1)
+
+
+```
+
+
+
+
+## 2.2 DE table
+
+Table includes genes passing P < 0.2
+
+SVA corrected DE:
+```{r}
+
+library(DT)
+
+datatable(filter(wt_het_DE_cpm1_sva[[1]], PValue < 0.2), 
+          rownames = FALSE, 
+          filter = list(position = 'top', clear = FALSE, plain = FALSE), 
+          options = list(paging = FALSE, scrollX=T, scrollY="700px", searching = FALSE))
+
+```
+
+
+```{r}
+
+library(ggplot2)
+library(plotly)
+library(cowplot)
+library(ggrepel)
+
+```
+
+## 2.3 Volcano plot
+```{r, fig.height=8, fig.width=10}
+
+source("volcano_plot_text.R")
+
+volcano_plot_text(wt_het_DE_cpm1_sva[[1]], title = "WT vs Wac Het")
+
+```
+
+
+
+## 2.4 Genes passing FDR < 0.1, RPKM plots
+```{r}
+
+DE <- wt_het_DE_cpm1_sva[[1]]
+
+top_genes <- arrange(filter(DE, FDR < 0.1), -logFC)$gene_name
+
+```
+
+
+```{r, fig.height=10, fig.width=12}
+
+pl <- lapply(top_genes, function(x) {rpkm_box_plot(x, x)+
+                                     theme(legend.position="none")})
+
+
+plot_grid(plotlist = pl, nrow = 4, ncol = 6)
+
+```
+
+
+
+
+## 2.5 DE signature heatmaps
+
+```{r, fig.height = 8, fig.width=8}
+
+library(pheatmap)
+
+rpkm.data2 <- as.data.frame(rpkm.data)
+rpkm.data2$gene_id <- rownames(rpkm.data)
+
+#all(colnames(rpkm.data2)[1:24] == df$ID)
+
+
+set.seed(1234)
+
+# Random heatmap 
+# heatmap_m <- as.matrix(filter(as.data.frame(rpkm.data2), gene_id %in% sample(rpkm.data2$gene_id, 1000))[,1:24])
+
+heatmap_m <- as.matrix(filter(as.data.frame(rpkm.data2), gene_id %in% 
+                                  filter(DE, FDR < 0.1)$gene_id)[,1:24])
+
+
+
+gene_annotation <- filter(DE, gene_id %in% rownames(heatmap_m))
+rownames(gene_annotation) <- gene_annotation$gene_id
+gene_annotation <- gene_annotation[rownames(heatmap_m),]
+#gene_annotation$gene_id == rownames(heatmap_m)
+
+
+rownames(heatmap_m) <- gene_annotation$gene_name
+
+anno <- df[,c("Sex", "Genotype")]
+
+rownames(anno) <- colnames(heatmap_m)
+
+pheatmap(heatmap_m, 
+         show_rownames = T, scale = "row", 
+         clustering_distance_rows="euclidean", 
+         cex=1,
+         clustering_distance_cols="euclidean", 
+         clustering_method="complete", 
+         border_color=FALSE,
+         fontsize_row = 12,
+         annotation_col = anno,
+         main = "Significant genes at FDR < 0.1")
+
+
+```
+
+
+
+```{r, fig.height = 8, fig.width=8}
+
+library(pheatmap)
+
+rpkm.data2 <- as.data.frame(rpkm.data)
+rpkm.data2$gene_id <- rownames(rpkm.data)
+#all(colnames(rpkm.data2)[1:24] == df$ID)
+
+
+set.seed(1234)
+
+# Random heatmap 
+#heatmap_m <- as.matrix(filter(as.data.frame(rpkm.data2), gene_id %in% sample(rpkm.data2$gene_id, 1000))[,1:24])
+
+heatmap_m <- as.matrix(filter(as.data.frame(rpkm.data2), gene_id %in% 
+                                  filter(DE, FDR < 0.2)$gene_id)[,1:24])
+
+
+
+gene_annotation <- filter(DE, gene_id %in% rownames(heatmap_m))
+rownames(gene_annotation) <- gene_annotation$gene_id
+gene_annotation <- gene_annotation[rownames(heatmap_m),]
+#gene_annotation$gene_id == rownames(heatmap_m)
+
+
+rownames(heatmap_m) <- gene_annotation$gene_name
+#pheatmap(heatmap_m)
+
+anno <- df[,c("Sex", "Genotype")]
+
+rownames(anno) <- colnames(heatmap_m)
+
+pheatmap(heatmap_m, 
+         show_rownames = T, scale = "row", 
+         clustering_distance_rows="euclidean", 
+         cex=1,
+         clustering_distance_cols="euclidean", 
+         clustering_method="complete", 
+         border_color=FALSE,
+         fontsize_row = 12,
+         annotation_col = anno,
+         main = "Significant genes at FDR < 0.2")
+
+
+```
+
+
+
+
+## 2.6 Sex stratified DE
+
+```{r}
+
+wt_het_DE_males <- pairwise_DE_male("WT", "HET", 1)
+
+wt_het_DE_females <- pairwise_DE_female("WT", "HET", 1)
+
+
+#head(wt_het_DE_males[[1]], 20)
+#head(wt_het_DE_females[[1]], 20)
+
+#head(filter(wt_het_DE_males[[1]], FDR < 1))
+#head(filter(wt_het_DE_females[[1]], FDR < 1))
+
+```
+
+
+### 2.6.1 Male DE table
+
+Table includes genes passing P < 0.2
+
+```{r}
+
+datatable(filter(wt_het_DE_males[[1]], PValue < 0.2), 
+          rownames = FALSE, 
+          filter = list(position = 'top', clear = FALSE, plain = FALSE), 
+          options = list(paging = FALSE, scrollX=T, scrollY="700px", searching = FALSE))
+
+
+```
+
+
+### 2.6.2 Female DE table
+
+Table includes genes passing P < 0.2
+
+```{r}
+
+datatable(filter(wt_het_DE_females[[1]], PValue < 0.2), 
+          rownames = FALSE, 
+          filter = list(position = 'top', clear = FALSE, plain = FALSE), 
+          options = list(paging = FALSE, scrollX=T, scrollY="700px", searching = FALSE))
+
+
+```
+
+
+
+### 2.6.3 Correlation of male vs female DE
+```{r, fig.width=8, fig.height=8}
+
+# Male vs female DE correlation
+
+male <- wt_het_DE_males[[1]]
+female <- wt_het_DE_females[[1]]
+
+
+colnames(male) <- c("gene_id", "gene_name", paste0(c("logFC", "logCPM", "LR", "PValue", "FDR"), "_male"))
+colnames(female) <- c("gene_id", "gene_name", paste0(c("logFC", "logCPM", "LR", "PValue", "FDR"), "_female"))
+
+mf <- merge(male, female, all = TRUE)
+
+mf <- dplyr::filter(mf, PValue_male < 0.05 | PValue_female < 0.05)
+
+mf$logFC_female <- ifelse(mf$logFC_female > 1, 1, mf$logFC_female)
+mf$logFC_female <- ifelse(mf$logFC_female < -1, -1, mf$logFC_female)
+
+mf$logFC_male <- ifelse(mf$logFC_male > 1, 1, mf$logFC_male)
+mf$logFC_male <- ifelse(mf$logFC_male < -1, -1, mf$logFC_male)
+
+
+mf$Significance <- ifelse(mf$PValue_female < 0.05, "P < 0.05 in females", "Non significant")
+mf$Significance <- ifelse(mf$PValue_male < 0.05, "P < 0.05 in males", mf$Significance)
+mf$Significance <- ifelse(mf$PValue_male < 0.05 & mf$PValue_female < 0.05, "P < 0.05 in males and females", mf$Significance)
+
+
+ggplot(mf, aes(x  = logFC_male, y = logFC_female))+
+    geom_point(alpha = 0.4)+
+    geom_smooth(method = 'lm')+
+    theme_bw()+
+    geom_vline(xintercept = 0)+
+    geom_hline(yintercept = 0)+
+    geom_vline(xintercept = 1, linetype = 2)+
+    geom_vline(xintercept = -1, linetype = 2)+
+    geom_hline(yintercept = 1, linetype = 2)+
+    geom_hline(yintercept = -1, linetype = 2)+
+    coord_cartesian(xlim = c(-1.1,1.1), ylim = c(-1.1,1.1))+
+    labs(title = "Sex-stratified DE signatures are concordant ", 
+         subtitle = "883 genes at P < 0.05",
+         x = "Male [log2FC]",
+         y = "Female [log2FC]")
+
+
+# save.image("G:/Shared drives/Nord Lab - Computational Projects2/WAC_bulk_May_2023/Session_2_21_2024.RData")
+# load("G:/Shared drives/Nord Lab - Computational Projects2/WAC_bulk_May_2023/Session_2_21_2024.RData")
+
+```
+
+
+# 3. Gene ontology enrichment analysis
+
+```{r}
+
+library(topGO)
+
+GO_analysis <- function(background.genes, test.genes) {
+
+  #background.genes <- q$gene_name
+  geneUniverse <- background.genes
+ 
+
+  genesOfInterest <- test.genes
+  geneList <- factor(as.integer(geneUniverse %in% genesOfInterest))
+  names(geneList) <- geneUniverse
+  myGOdata <- new("topGOdata", 
+                  description="My project", 
+                  ontology="BP", 
+                  allGenes=geneList, 
+                  annot=annFUN.org,    
+                  mapping="org.Mm.eg.db", 
+                  ID = "alias", 
+                  nodeSize=20)
+  
+  print(myGOdata)
+  
+resultFisher <- runTest(myGOdata, algorithm = "weight01", statistic = "fisher")
+#resultKS <- runTest(myGOdata, algorithm = "classic", statistic = "ks")
+#resultKS.elim <- runTest(myGOdata, algorithm = "elim", statistic = "ks")
+#classicKS = resultKS, elimKS = resultKS.elim, - add later
+
+allRes <- GenTable(myGOdata, 
+                   classicFisher = resultFisher, 
+                   orderBy = "classicFisher", topNodes = length(resultFisher@score))
+
+padding = 1
+allRes$Enrichment <- round(log2((allRes$Significant + padding)/(allRes$Expected + padding)), digits = 2)
+
+#showSigOfNodes(myGOdata, score(resultKS.elim), firstSigNodes = 5, useInfo = 'all')
+#nodes_plot <- recordPlot(showSigOfNodes(myGOdata, score(resultKS.elim), firstSigNodes = 5, useInfo = 'all'))
+
+#Building a df of DE genes belonging to top 20 GO BP caegories
+DE_genes_in_top_GO_cat <- function(r){
+ fisher.go <- allRes[r,1]
+ #print(allRes[x,c(1,2)])
+ fisher.ann.genes <- genesInTerm(myGOdata, whichGO=fisher.go)
+ df <- data.frame(GO.ID = allRes[r,c(1)], Term = allRes[r,c(2)], gene_name=intersect(as.character(fisher.ann.genes[[1]]), background.genes))
+ df <- filter(df, gene_name %in% test.genes)
+ df
+}
+
+list(allRes, lapply(1:length(allRes$GO.ID), DE_genes_in_top_GO_cat))
+
+}
+
+```
+
+
+## 3.1 GO enrichment of 23 genes passing FDR < 0.1
+
+```{r}
+
+library(data.table)
+
+# 23 genes at FDR < 0.1
+GO_FDR01 <- GO_analysis(DE$gene_name, filter(DE, FDR < 0.1)$gene_name)
+
+
+
+datatable(filter(GO_FDR01[[1]], 
+                    classicFisher < 0.05, 
+                    Significant > 1,
+                    Enrichment > 0), 
+          rownames = FALSE, style = "auto")
+
+
+# write.csv(GO_FDR01[[1]], file = "Supplementary_tables/Supplementary table X, GO_table_23_FDR01_genes.csv", row.names = F)
+
+```
+
+### 3.1.1 Expression of genes in enriched GO terms
+
+Cell adhesion genes
+```{r}
+
+term = "cell adhesion"
+
+g <- filter(rbindlist(GO_FDR01[[2]]), Term == term)$gene_name
+
+pl <- lapply(g, function(x) {rpkm_box_plot(x, x)+
+        theme(legend.position = "none")})
+plot_grid(plotlist = pl, nrow = 2, ncol = 2)
+
+
+```
+
+
+Positive regulation of neuron differentiation
+```{r, fig.height=3}
+
+term = "positive regulation of neuron differenti..."
+
+g <- filter(rbindlist(GO_FDR01[[2]]), Term == term)$gene_name
+
+pl <- lapply(g, function(x) {rpkm_box_plot(x, x)+
+        theme(legend.position = "none")})
+plot_grid(plotlist = pl, nrow = 1, ncol = 2)
+
+```
+
+
+
+Regulation of cytokine production
+```{r}
+
+term = "regulation of cytokine production"
+
+g <- filter(rbindlist(GO_FDR01[[2]]), Term == term)$gene_name
+
+pl <- lapply(g, function(x) {rpkm_box_plot(x, x)+
+        theme(legend.position = "none")})
+plot_grid(plotlist = pl, nrow = 2, ncol = 2)
+
+```
+
+
+```{r, eval=FALSE}
+
+# Figure of individual genes.
+# Separate Bcl6 as a common node across GO terms.
+
+
+rpkm_box_plot <- function(x, y){
+    
+rownames(rpkm.data_linear) <- counts2$gene_name
+    
+rpkm_test <- as.data.frame(reshape2::melt(rpkm.data_linear[x,]))
+rpkm_test <- data.frame(df, "RPKM" = rpkm_test$value)
+
+j_brew_colors <- brewer.pal(n = 8, name = "Paired")[c(2,6)]
+
+
+
+ggplot(rpkm_test, aes(x = Genotype, y= RPKM, colour=Genotype))+
+  geom_jitter(size=2, width = 0.2, alpha = 0.5, aes(shape = sex.by.rna))+
+  geom_boxplot(alpha=0, position="identity", size = 0.2)+
+  
+  theme_bw()+
+  theme(axis.text.x=element_text(angle=0, vjust=0.9, hjust=0.5, size=14))+
+  theme(axis.text.y=element_text(size=12))+
+  theme(axis.title.y=element_text(size=12))+
+  labs(title= y, x="")+
+  theme(plot.title = element_text(size = rel(2), hjust=0.5))+
+  scale_color_manual(values = j_brew_colors)+
+  theme(legend.position = "bottom")
+   # facet_wrap(~Cells)
+
+}
+
+
+# 10efgh
+pl <- lapply(c("Bcl6", 
+               "Pcdhga11", "Pcdhga6", "Pcdhga9",
+               "Mmd",
+               "Adam33", "Pde4b"), function(x) {rpkm_box_plot(x, x)+
+        theme(legend.position = "none")})
+
+pl
+
+
+```
+
+
+
+## 3.2 GO enrichment of 42 genes passing FDR < 0.2
+
+```{r}
+library(data.table)
+
+# 42 genes at FDR < 0.2
+GO_FDR02 <- GO_analysis(DE$gene_name, filter(DE, FDR < 0.2)$gene_name)
+
+
+
+datatable(filter(GO_FDR02[[1]], 
+                    classicFisher < 0.05, 
+                    Significant > 1,
+                    Enrichment > 0), 
+          rownames = FALSE, style = "auto")
+
+```
+
+
+
+## 3.3 GO enrichment of P < 0.05 genes
+
+### 3.3.1 Upregulated genes
+
+```{r}
+
+GO_P05_Up <- GO_analysis(DE$gene_name, 
+                        filter(DE, PValue < 0.05, 
+                               logFC > 0)$gene_name)
+
+
+
+datatable(filter(GO_P05_Up[[1]], classicFisher < 0.05), 
+          rownames = FALSE, 
+          filter = list(position = 'top', clear = FALSE, plain = FALSE), 
+          options = list(paging = FALSE, scrollX=T, scrollY="700px", searching = FALSE))
+
+
+```
+
+
+### 3.3.2 Downregulated genes
+
+```{r}
+
+GO_P05_Down <- GO_analysis(DE$gene_name, 
+                        filter(DE, PValue < 0.05, 
+                               logFC < 0)$gene_name)
+
+
+datatable(filter(GO_P05_Down[[1]], classicFisher < 0.05), 
+          rownames = FALSE, 
+          filter = list(position = 'top', clear = FALSE, plain = FALSE), 
+          options = list(paging = FALSE, scrollX=T, scrollY="700px", searching = FALSE))
+
+```
+
+
+
+### 3.3.3 GO enrichment summary heatmap
+
+P < 0.05 genes, up and downregulated. 
+
+```{r, fig.width=8, fig.height=10}
+
+up <- GO_P05_Up[[1]]
+down <- GO_P05_Down[[1]]
+
+up$classicFisher <- round(as.numeric(up$classicFisher), digits = 3)
+down$classicFisher <- round(as.numeric(down$classicFisher), digits = 3)
+
+
+up$Direction <- "Up"
+down$Direction <- "Down"
+
+GO_df_all <- rbind(up, down)
+
+
+GO_df_all$GO.ID.Term <- paste(GO_df_all$GO.ID, GO_df_all$Term, sep=".")
+
+
+#Filters GO terms that meet enrichment criteria
+short.terms <- unique(filter(GO_df_all, 
+                             classicFisher < 0.05, 
+                             Enrichment > 0,
+                             Significant > 5,
+                             Annotated < 1000,
+                             Significant >= 5)$GO.ID.Term)
+
+
+GO_df_all_filtered <- filter(GO_df_all, GO.ID.Term %in% short.terms)
+
+GO_df_all_filtered <- GO_df_all_filtered[,c("GO.ID", "Term", "Annotated", "Significant", "Expected", "Enrichment",
+                                            "classicFisher", "Direction", "GO.ID.Term")]
+
+
+GO_df_all_filtered <- filter(GO_df_all_filtered, GO.ID.Term %in% short.terms)
+
+
+GO_df_all_filtered$GO.ID.Term <- factor(GO_df_all_filtered$GO.ID.Term, levels = short.terms)
+
+
+up1 <- dplyr::select(filter(GO_df_all_filtered, Direction == "Up"), 
+                                Term, Enrichment, classicFisher)
+
+down1 <- dplyr::select(filter(GO_df_all_filtered, Direction == "Down"), 
+                                Term, Enrichment, classicFisher)
+
+
+
+colnames(up1) <- c("Term", "Upregulated_genes", "P_upregulated")
+colnames(down1) <- c("Term", "Downregulated_genes", "P_downregulated")
+
+a <- merge(up1, down1, by="Term", all = T)
+
+
+x <- as.matrix(a)
+
+x[is.na(x)] <- 0
+
+x <- as.data.frame(x)
+
+rownames(x) <- x$Term
+x$Term <- NULL
+x$Upregulated_genes <- as.numeric(x$Upregulated_genes) 
+x$Downregulated_genes <- as.numeric(x$Downregulated_genes)
+
+x_Pval <- x[,c("P_upregulated", "P_downregulated")]
+
+#x_Pval$P_upregulated <- round(as.numeric(x_Pval$P_upregulated), digits = 2)
+#x_Pval$P_downregulated <- round(as.numeric(x_Pval$P_downregulated), digits = 2)
+
+
+x <- x[,c("Upregulated_genes", "Downregulated_genes")]
+x <- as.matrix(x)
+
+paletteLength <- 100
+
+myBreaks <- c(seq(min(x), 0, length.out=ceiling(paletteLength/2) + 1), 
+              seq(max(x)/paletteLength, max(x), length.out=floor(paletteLength/2)))
+myColor <- colorRampPalette(c("#9E0041", "#FEBE6E", "white","#43abea", "#13008e"))(paletteLength)
+
+x <- ifelse(x < 0, 0, x)
+x <- ifelse(as.matrix(x_Pval) < 0.05, x, 0)
+colnames(x) <- c("Upregulated", "Downregulated")
+
+x_Pval <- ifelse(as.matrix(x_Pval) < 0.05, as.matrix(x_Pval), "")
+
+
+
+pheatmap(x, 
+         clustering_distance_rows="correlation", 
+         cluster_rows = T, 
+         cluster_cols = F, 
+         legend = T,
+         fontsize_row  = 9, 
+         color = rev(myColor), 
+         breaks = myBreaks, 
+         main = "Gene ontology enrichment of P < 0.05 genes",
+         display_numbers = x_Pval)
+
+
+# write.csv(GO_df_all_filtered, file = "GO_enrichment_analysis_at_P05.csv")
+
+```
+
+
+
+### 3.3.4 DE genes in enriched GO terms
+
+Genes in the first 8 of the enriched terms are plotted.
+
+#### 3.3.4.1 Upregulated genes at P < 0.05 
+```{r}
+
+Enriched_terms_up <- filter(GO_df_all_filtered, classicFisher < 0.05, Direction == "Up")$Term
+Enriched_terms_down <- filter(GO_df_all_filtered, classicFisher < 0.05, Direction == "Down")$Term
+
+
+
+library(Hmisc)
+
+enr_genes_pl_up <- function(term_up, nrow, ncol){
+
+    genes <- filter(rbindlist(GO_P05_Up[[2]]), Term == Enriched_terms_up[term_up])$gene_name
+
+
+    pl <- lapply(genes, function(x) {rpkm_box_plot(x, x)+
+                                     theme(legend.position="none")})
+
+
+    title <- ggdraw() + draw_label(capitalize(Enriched_terms_up[term_up]), 
+                                 fontface = 'bold', size = 18, color = "black")    
+
+    plot_grid(
+        title,
+        plot_grid(plotlist = pl, nrow = nrow, ncol = ncol),
+            ncol = 1, rel_heights = c(0.1, 0.9))
+
+}
+
+# Ns of  significant genes in GO terms
+# Up: 16  7 13  9 12  6 28  8
+# Down: 11  6 21  6 11 16 17 32
+
+#sapply(1:8, function(x){
+#    
+#    length(filter(rbindlist(GO_P05_Up[[2]]), Term == Enriched_terms_up[x])$gene_name)
+#    
+#    })
+
+
+#sapply(1:8, function(x){
+#    
+#    length(filter(rbindlist(GO_P05_Down[[2]]), Term == Enriched_terms_down[x])$gene_name)
+#    
+#    })
+
+# P < 0.05 Gene counts per Term
+#knitr::kable(as.data.frame(table(filter(as.data.frame(rbindlist(GO_P05_Up[[2]])), Term %in% Enriched_terms_up)$Term)))
+
+```
+
+```{r, fig.height= 3*4, fig.width= 4*4}
+
+enr_genes_pl_up(1, 3, 4)
+
+```
+
+```{r, fig.height= 2*4, fig.width= 4*4}
+
+enr_genes_pl_up(2, 2, 4)
+
+```
+
+```{r, fig.height= 4*4, fig.width= 4*4}
+enr_genes_pl_up(3, 4, 4)
+
+```
+
+```{r, fig.height= 3*4, fig.width= 3*4}
+
+enr_genes_pl_up(4, 3, 3)
+
+```
+
+```{r, fig.height= 3*4, fig.width= 4*4}
+enr_genes_pl_up(5, 3, 4)
+
+```
+
+```{r, fig.height= 2*4, fig.width= 3*4}
+enr_genes_pl_up(6, 2, 3)
+
+```
+
+```{r, fig.height= 2*4, fig.width= 4*4}
+enr_genes_pl_up(7, 2, 4)
+
+```
+
+```{r, fig.height= 2*4, fig.width= 4*4}
+
+enr_genes_pl_up(8, 2, 4)
+
+```
+
+
+#### 3.3.4.2 Downregulated genes at P < 0.05
+
+```{r}
+# Gene counts per Term
+#knitr::kable(as.data.frame(table(filter(as.data.frame(rbindlist(GO_P05_Down[[2]])), Term %in% Enriched_terms_down)$Term)))
+
+
+enr_genes_pl_down <- function(term_down, nrow, ncol){
+
+    genes <- filter(rbindlist(GO_P05_Down[[2]]), Term == Enriched_terms_down[term_down])$gene_name
+
+
+    pl <- lapply(genes, function(x) {rpkm_box_plot(x, x)+
+                                     theme(legend.position="none")})
+
+
+  title <- ggdraw() + draw_label(capitalize(Enriched_terms_down[term_down]), 
+                                 fontface = 'bold', size = 18, color = "black")    
+
+    plot_grid(
+        title,
+        plot_grid(plotlist = pl, nrow = nrow, ncol = ncol),
+            ncol = 1, rel_heights = c(0.1, 0.9))
+
+}
+
+# Ns of  significant genes in GO terms
+# Up: 16  7 13  9 12  6 28  8
+# Down: 11  6 21  6 11 16 17 32
+
+```
+
+```{r, fig.height= 3*4, fig.width= 4*4}
+
+enr_genes_pl_down(1, 3, 4)
+
+```
+
+```{r, fig.height= 2*4, fig.width= 3*4}
+
+enr_genes_pl_down(2, 2, 3)
+
+```
+
+
+```{r, fig.height= 2*4, fig.width= 4*4}
+
+enr_genes_pl_down(3, 2, 4)
+
+```
+
+```{r, fig.height= 2*4, fig.width= 3*4}
+
+enr_genes_pl_down(4, 2, 3)
+
+```
+
+
+```{r, fig.height= 3*4, fig.width= 4*4}
+
+enr_genes_pl_down(5, 2, 4)
+
+```
+
+```{r, fig.height= 4*4, fig.width= 4*4}
+
+enr_genes_pl_down(6, 4, 4)
+
+```
+
+```{r, fig.height= 4*4, fig.width= 5*4}
+
+enr_genes_pl_down(7, 3, 4)
+
+```
+
+```{r, fig.height= 4*4, fig.width= 8*4}
+
+enr_genes_pl_down(8, 2, 4)
+
+```
+
+
+## Extra: Protocadherin genes
+
+Protocadherins, DE at P < 0.05
+```{r}
+
+Pcdh_at_P05 <- grep("Pcdh", filter(wt_het_DE_cpm1_sva[[1]], PValue < 0.05)$gene_name, value = T)
+
+# Pcdh_at_P05 <- grep("Pcdh", filter(wt_het_DE_cpm1_sva[[1]], PValue < 0.05, logFC < 0)$gene_name, value = T)
+# Heatmap of all protocadherins alpha.
+
+library(pheatmap)
+
+rpkm.data2 <- as.data.frame(rpkm.data)
+rpkm.data2$gene_id <- rownames(rpkm.data)
+colnames(rpkm.data2)[1:24] == df$ID
+
+
+set.seed(1234)
+
+# Random heatmap 
+#heatmap_m <- as.matrix(filter(as.data.frame(rpkm.data2), gene_id %in% sample(rpkm.data2$gene_id, 1000))[,1:24])
+
+heatmap_m <- as.matrix(filter(as.data.frame(rpkm.data2), 
+                              gene_id %in% filter(wt_het_DE_cpm1_sva[[1]], gene_name %in% Pcdh_at_P05)$gene_id))[,1:24]
+
+
+
+x <- matrix(as.numeric(heatmap_m), ncol = ncol(heatmap_m))  
+colnames(x) <- colnames(heatmap_m)
+rownames(x) <- rownames(heatmap_m)
+#pheatmap(x)
+
+
+
+gene_annotation <- filter(DE, gene_id %in% rownames(x))
+rownames(gene_annotation) <- gene_annotation$gene_id
+gene_annotation <- gene_annotation[rownames(heatmap_m),] # Ensure correct order of genes
+rownames(gene_annotation) <- gene_annotation$gene_name
+
+
+
+rownames(x) <- gene_annotation$gene_name
+#pheatmap(heatmap_m)
+
+anno <- df[,c("Genotype", "sex.by.rna")]
+rownames(anno) <- colnames(heatmap_m)
+
+anno <- rbind(anno[anno$Genotype == "WT",],
+              anno[anno$Genotype == "HET",])
+
+x <- x[,rownames(anno)]
+
+pheatmap(x, 
+         show_rownames = T, cluster_cols = F, scale = "row", 
+         clustering_distance_rows="euclidean", 
+         cex=1,
+         clustering_distance_cols="euclidean", 
+         clustering_method="complete", 
+         border_color=FALSE,
+         annotation_col = anno,
+         main = "Protocadherins at P < 0.05 [log2 RPKM]")
+
+```
+
+
+```{r}
+# Protocadherins at P < 0.05 
+
+source("volcano_plot_text_P05.R")
+volcano_plot_text_P05(filter(wt_het_DE_cpm1_sva[[1]], gene_name %in% Pcdh_at_P05), "Protocadherins at P < 0.05")
+
+```
+
+
+
+
+
+
+```{r, fig.width = 12, fig.height = 10}
+
+genes <- grep("Pcdh", filter(wt_het_DE_cpm1_sva[[1]], PValue < 0.05)$gene_name, value = T)
+
+
+pl <- lapply(genes, function(x) {rpkm_box_plot(x, x)+
+                                     theme(legend.position="none")})
+
+plot_grid(plotlist = pl, nrow = 3, ncol = 5)
+
+#c("Pcdhga11", "Pcdhga6", "Pcdhga8", "Pcdhga9", "Pcdhga5", "Pcdhga2", "Pcdhga1", "Pcdhga12", "Pcdhga7", "Pcdhga4", "Pcdhga3", "Pcdhgc3", "Pcdhgc5", "Pcdhgc4")
+
+
+
+```
+
+
+
+```{r}
+# Protocadherins at P < 0.05
+
+Pcdh_at_P05 <- grep("Pcdh", filter(wt_het_DE_cpm1_sva[[1]], PValue < 0.05)$gene_name, value = T)
+
+
+heatmap_m <- as.matrix(filter(as.data.frame(rpkm.data2), gene_id %in% 
+                                  filter(DE, gene_name %in% Pcdh_at_P05)$gene_id))
+
+
+
+gene_annotation <- filter(DE, gene_id %in% rownames(heatmap_m))
+rownames(gene_annotation) <- gene_annotation$gene_id
+gene_annotation <- gene_annotation[rownames(heatmap_m),]
+gene_annotation$gene_id == rownames(heatmap_m)
+
+
+rownames(heatmap_m) <- gene_annotation$gene_name
+#pheatmap(heatmap_m)
+
+heatmap_m <- heatmap_m[,df$ID]
+
+anno <- df[,c("Sex", "Genotype")]
+
+rownames(anno) <- colnames(heatmap_m)[1:24]
+
+x <- matrix(as.numeric(heatmap_m), ncol = ncol(heatmap_m))  
+colnames(x) <- colnames(heatmap_m)
+rownames(x) <- rownames(heatmap_m)
+#pheatmap(x)
+
+
+paletteLength <- 100
+
+myBreaks <- c(seq(min(x), 0, length.out=ceiling(paletteLength/2) + 1), 
+              seq(max(x)/paletteLength, max(x), length.out=floor(paletteLength/2)))
+myColor <- colorRampPalette(c("#9E0041", "#FEBE6E", "white","#43abea", "#13008e"))(paletteLength)
+
+
+
+pheatmap(x, 
+         show_rownames = T, scale = "row", 
+         clustering_distance_rows="euclidean", 
+         cex=1,
+         clustering_distance_cols="euclidean", 
+         clustering_method="complete", 
+         border_color=FALSE,
+         annotation_col = anno,
+         main = "Protocadherins at P < 0.05 [log2 RPKM]")
+
+```
+
+
+
+# 4. Differential splicing with MAJIQ v2.5.1
+
+```{shell, eval=FALSE}
+
+# Splicing results are published in a supplement
+
+# Prerequisites
+# Read the documentation. Make sure htslib is in the path and/or available as a variable as specified in the documentation.
+# bam files need to be samtools-index indexed, not PicardTools-indexed.
+# I simplified Sample names.
+# Gene model must be in the GFF3 format, not gtf
+# -c - is a path fo the config file, not the directory
+# Use the online Command Builder to make your life easier. It's very nice!
+# https://biociphers.bitbucket.io/majiq/command_builder.html
+
+## MAJIQ Builder¶
+
+### Config file ###
+[info]
+bamdirs=/mnt/disks/data1/WAC_GEO_submission_temp/majic_output/bam_files/WT,/mnt/disks/data1/WAC_GEO_submission_temp/majic_output/bam_files/Het
+genome=GRCm38
+
+[experiments]
+WT=WAC1,WAC10,WAC11,WAC14,WAC16,WAC17,WAC18,WAC2,WAC20,WAC24,WAC3,WAC4,WAC7,WAC8
+Het=WAC12,WAC13,WAC15,WAC19,WAC21,WAC22,WAC23,WAC5,WAC6,WAC9
+
+
+# Build commandhtop
+/mnt/disks/data1/WAC_GEO_submission_temp/env/bin/majiq build /mnt/disks/data1/References/Mus_musculus/Ensembl/GRCm38/Annotation/Genes/Mus_musculus.GRCm38.95.gff3 -o /mnt/disks/data1/WAC_GEO_submission_temp/majic_output/build -c /mnt/disks/data1/WAC_GEO_submission_temp/majic_output/majiq_build_config.ini -j 12 
+
+# Quantify command (example):
+/mnt/disks/data1/WAC_GEO_submission_temp/env/bin/majiq deltapsi -o /mnt/disks/data1/WAC_GEO_submission_temp/majic_output/deltapsi -j 12 \
+-grp1 /mnt/disks/data1/WAC_GEO_submission_temp/majic_output/build/WAC10.majiq /mnt/disks/data1/WAC_GEO_submission_temp/majic_output/build/WAC11.majiq /mnt/disks/data1/WAC_GEO_submission_temp/majic_output/build/WAC14.majiq /mnt/disks/data1/WAC_GEO_submission_temp/majic_output/build/WAC16.majiq /mnt/disks/data1/WAC_GEO_submission_temp/majic_output/build/WAC17.majiq /mnt/disks/data1/WAC_GEO_submission_temp/majic_output/build/WAC18.majiq /mnt/disks/data1/WAC_GEO_submission_temp/majic_output/build/WAC1.majiq /mnt/disks/data1/WAC_GEO_submission_temp/majic_output/build/WAC20.majiq /mnt/disks/data1/WAC_GEO_submission_temp/majic_output/build/WAC24.majiq /mnt/disks/data1/WAC_GEO_submission_temp/majic_output/build/WAC2.majiq /mnt/disks/data1/WAC_GEO_submission_temp/majic_output/build/WAC3.majiq /mnt/disks/data1/WAC_GEO_submission_temp/majic_output/build/WAC4.majiq /mnt/disks/data1/WAC_GEO_submission_temp/majic_output/build/WAC7.majiq /mnt/disks/data1/WAC_GEO_submission_temp/majic_output/build/WAC8.majiq \
+-grp2 /mnt/disks/data1/WAC_GEO_submission_temp/majic_output/build/WAC12.majiq /mnt/disks/data1/WAC_GEO_submission_temp/majic_output/build/WAC13.majiq /mnt/disks/data1/WAC_GEO_submission_temp/majic_output/build/WAC15.majiq /mnt/disks/data1/WAC_GEO_submission_temp/majic_output/build/WAC19.majiq /mnt/disks/data1/WAC_GEO_submission_temp/majic_output/build/WAC21.majiq /mnt/disks/data1/WAC_GEO_submission_temp/majic_output/build/WAC22.majiq /mnt/disks/data1/WAC_GEO_submission_temp/majic_output/build/WAC23.majiq /mnt/disks/data1/WAC_GEO_submission_temp/majic_output/build/WAC5.majiq /mnt/disks/data1/WAC_GEO_submission_temp/majic_output/build/WAC6.majiq /mnt/disks/data1/WAC_GEO_submission_temp/majic_output/build/WAC9.majiq  \
+-n WT Het
+
+# Voila command:
+voila view /mnt/disks/data1/WAC_GEO_submission_temp/majic_output/build
+
+
+# Voila command:
+# Transfer files to local WSL2 Ubuntu computer and launch the interactive session from there.
+# The files are WT-Het.deltapsi.tsv  WT-Het.deltapsi.voila  deltapsi_majiq.log and build directory
+./env/bin/voila view ./Chd8_P2_forebrain_splicing/
+
+```
+
+```{r, eval=FALSE}
+
+ds_wac <- read.table("G:/Shared drives/Nord Lab - Computational Projects2/WAC_bulk_May_2023/Splicing_analysis/majic_output/WT-Het.deltapsi.tsv", 
+                     fill = TRUE, header = TRUE)
+
+
+### Are DS genes also DE? No
+#ds_genes <- c("Dnmbp", "Gm21992", "Gt(ROSA)26Sor", "Pigf", "Snhg14", "Ssrp1", "Trmt13", "Trmt61b", "Wac", "Zc3h7a")
+#filter(wt_het_DE_cpm1_sva[[1]], gene_name %in% ds_genes)
+
+```
+
+# 5. R SessionInfo
+
+```{r}
+
+library(pander)
+pander(sessionInfo())
+
+```
+
+
